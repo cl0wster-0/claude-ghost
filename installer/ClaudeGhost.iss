@@ -47,6 +47,8 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\CG.exe"; IconFilename: "{app}
 Name: "{userstartup}\{#AppName}"; Filename: "{app}\CG.exe"; IconFilename: "{app}\icon.ico"; Tasks: autostart
 
 [Run]
+; обновить кэш значков Windows, чтобы диспетчер задач не показывал старую иконку
+Filename: "{sys}\ie4uinit.exe"; Parameters: "-show"; Flags: runhidden skipifdoesntexist
 Filename: "{app}\CG.exe"; Description: "Запустить Claude Ghost"; Flags: nowait postinstall skipifsilent
 ; при тихой установке (автообновление) — сразу запустить новую версию
 Filename: "{app}\CG.exe"; Flags: nowait; Check: WizardSilent

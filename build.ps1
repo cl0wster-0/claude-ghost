@@ -24,7 +24,7 @@ VSVersionInfo(
   kids=[
     StringFileInfo([StringTable('040904B0', [
       StringStruct('CompanyName', 'cl0wster'),
-      StringStruct('FileDescription', 'Claude Ghost'),
+      StringStruct('FileDescription', 'CG.exe'),
       StringStruct('FileVersion', '$vs'),
       StringStruct('InternalName', 'CG'),
       StringStruct('OriginalFilename', 'CG.exe'),

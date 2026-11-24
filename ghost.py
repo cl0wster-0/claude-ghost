@@ -29,7 +29,7 @@ import mss
 from PIL import Image, ImageEnhance, ImageTk
 
 APP_NAME = "Claude Ghost"
-__version__ = "1.1.2"  # при сборке из тега vX.Y.Z заменяется на X.Y.Z (build.ps1)
+__version__ = "1.1.3"  # при сборке из тега vX.Y.Z заменяется на X.Y.Z (build.ps1)
 UPDATE_REPO = "cl0wster-0/claude-ghost"
 FROZEN = getattr(sys, "frozen", False)  # True, если запущен собранный .exe
 APP_DIR = os.path.dirname(sys.executable if FROZEN else os.path.abspath(__file__))
