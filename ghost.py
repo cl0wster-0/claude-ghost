@@ -29,7 +29,7 @@ import mss
 from PIL import Image, ImageEnhance, ImageTk
 
 APP_NAME = "Claude Ghost"
-__version__ = "1.1.1"  # при сборке из тега vX.Y.Z заменяется на X.Y.Z (build.ps1)
+__version__ = "1.1.2"  # при сборке из тега vX.Y.Z заменяется на X.Y.Z (build.ps1)
 UPDATE_REPO = "cl0wster-0/claude-ghost"
 FROZEN = getattr(sys, "frozen", False)  # True, если запущен собранный .exe
 APP_DIR = os.path.dirname(sys.executable if FROZEN else os.path.abspath(__file__))
@@ -718,14 +718,46 @@ class VoiceInput:
         self.started = 0.0
         self.model = None
         self.model_error = None
+        self.status = None  # текст для пользователя, пока модель скачивается
         threading.Thread(target=self._load_model, daemon=True).start()
 
+    REPOS = {"tiny": "Systran/faster-whisper-tiny", "base": "Systran/faster-whisper-base",
+             "small": "Systran/faster-whisper-small", "medium": "Systran/faster-whisper-medium"}
+    FILES = ["config.json", "preprocessor_config.json", "model.bin", "tokenizer.json", "vocabulary.*"]
+
+    def _model_dir(self):
+        """Скачать модель в %APPDATA%\\ClaudeGhost\\models\\<name> обычными файлами.
+
+        Кэш Hugging Face на Windows держит файлы через симлинки, и собранный .exe
+        иногда не может открыть model.bin оттуда — поэтому используем свою папку."""
+        name = self.cfg["whisper_model"]
+        if os.path.isdir(name):          # в настройках указан путь к своей модели
+            return name
+        path = os.path.join(DATA_DIR, "models", name)
+        mb = os.path.join(path, "model.bin")
+        if os.path.isfile(mb) and os.path.getsize(mb) > 1_000_000:
+            return path
+        from huggingface_hub import snapshot_download
+        shutil.rmtree(path, ignore_errors=True)
+        self.status = "Скачиваю модель распознавания речи (один раз, ~150 МБ)…"
+        snapshot_download(self.REPOS.get(name, name), local_dir=path, allow_patterns=self.FILES)
+        return path
+
     def _load_model(self):
-        try:
-            from faster_whisper import WhisperModel
-            self.model = WhisperModel(self.cfg["whisper_model"], device="cpu", compute_type="int8")
-        except Exception as e:
-            self.model_error = str(e)
+        from faster_whisper import WhisperModel
+        for attempt in (1, 2):
+            try:
+                path = self._model_dir()
+                self.model = WhisperModel(path, device="cpu", compute_type="int8")
+                self.model_error = None
+                break
+            except Exception as e:
+                self.model_error = str(e)
+                print("whisper model:", e, file=sys.stderr)
+                # битая/недокачанная модель — удаляем и качаем заново (один раз)
+                shutil.rmtree(os.path.join(DATA_DIR, "models", self.cfg["whisper_model"]),
+                              ignore_errors=True)
+        self.status = None
 
     @property
     def recording(self):
@@ -1230,6 +1262,8 @@ class App:
         self.box.show_status("Распознаю речь…")
 
         def work():
+            if self.voice.model is None and self.voice.status:
+                self.claude_events.put(("update_progress", self.voice.status))
             try:
                 text = self.voice.transcribe(audio)
             except Exception as e:
