@@ -59,6 +59,9 @@ if (-not ((Get-Content "$env:APPDATA\ClaudeGhost\selftest.txt") -match [regex]::
 
 # Installer
 $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
-if (-not $iscc) { $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
+if (-not $iscc) {
+  $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
+            "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+}
 & $iscc "/DAppVersion=$Version" installer\ClaudeGhost.iss
 Write-Host "Done: dist\ClaudeGhost-Setup.exe"
