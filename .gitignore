@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# PyInstaller / Inno Setup build output
+build/
+dist/
+*.spec
+
+# Local settings, logs, test output
+config.json
+*.log
+selftest.txt
+
+# Speech models (downloaded at first run; normally into the Hugging Face cache, not here)
+models/
+*.bin
+
+# Machine-specific launchers
+launcher/
+
+# OS / editors
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/
