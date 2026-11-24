@@ -42,7 +42,7 @@ python -m pip install -r requirements.txt pyinstaller
 python -m PyInstaller --noconfirm --clean --windowed `
   --name CG `
   --version-file version_info.txt `
-  --icon NONE `
+  --icon assets\icon.ico `
   --collect-all faster_whisper `
   --collect-all ctranslate2 `
   --collect-all onnxruntime `
