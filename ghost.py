@@ -29,7 +29,7 @@ import mss
 from PIL import Image, ImageEnhance, ImageTk
 
 APP_NAME = "Claude Ghost"
-__version__ = "1.1.0"  # при сборке из тега vX.Y.Z заменяется на X.Y.Z (build.ps1)
+__version__ = "1.1.1"  # при сборке из тега vX.Y.Z заменяется на X.Y.Z (build.ps1)
 UPDATE_REPO = "cl0wster-0/claude-ghost"
 FROZEN = getattr(sys, "frozen", False)  # True, если запущен собранный .exe
 APP_DIR = os.path.dirname(sys.executable if FROZEN else os.path.abspath(__file__))
@@ -1091,6 +1091,7 @@ class App:
         self.updater = Updater(self.claude_events)
         if FROZEN and self.cfg.get("check_updates", True):
             self.root.after(8000, self.updater.check_async)  # не мешаем старту
+        self.root.after(30, self._poll)
 
     def _offer_update(self, version, url):
         def install():
@@ -1098,7 +1099,6 @@ class App:
             self.updater.download_async(url)
         self.box.offer(f"Доступна новая версия Claude Ghost {version} (у вас {__version__}).\n\n"
                        "Кликните сюда, чтобы обновить. Ctrl+Shift+H — позже.", install)
-        self.root.after(30, self._poll)
 
     def _poll(self):
         try:
