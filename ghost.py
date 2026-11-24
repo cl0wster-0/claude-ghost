@@ -18,8 +18,10 @@ import shutil
 import subprocess
 import sys
 import threading
+import tempfile
 import time
 import tkinter as tk
+import urllib.request
 import tkinter.font as tkfont
 
 import keyboard
@@ -27,7 +29,8 @@ import mss
 from PIL import Image, ImageEnhance, ImageTk
 
 APP_NAME = "Claude Ghost"
-__version__ = "1.0.0"
+__version__ = "1.0.0"  # при сборке из тега vX.Y.Z заменяется на X.Y.Z (build.ps1)
+UPDATE_REPO = "cl0wster-0/claude-ghost"
 FROZEN = getattr(sys, "frozen", False)  # True, если запущен собранный .exe
 APP_DIR = os.path.dirname(sys.executable if FROZEN else os.path.abspath(__file__))
 # Настройки и лог храним в %APPDATA%\ClaudeGhost: папка установки может быть только для чтения
@@ -92,6 +95,8 @@ DEFAULT_CONFIG = {
     "font": ["Segoe UI", 9],
     # Скрывать ответ автоматически через N секунд (0 = не скрывать)
     "auto_hide_seconds": 0,
+    # Проверять обновления на GitHub Releases при запуске (только для установленного .exe)
+    "check_updates": True,
     # Держать заранее запущенный процесс claude, чтобы ответ приходил быстрее
     "prewarm": True,
     # Максимальная длинная сторона картинки, отправляемой Claude
@@ -482,7 +487,8 @@ class AnswerBox:
         self.line_h = tkfont.Font(font=font).metrics("linespace")
         self.win.geometry(f"{cfg['box_width']}x40+0+0")
         # ЛКМ — скрыть, ПКМ — скопировать ответ, колесо — прокрутка
-        self.text.bind("<Button-1>", lambda e: self.hide())
+        self.action = None  # если задано — клик по окну выполняет действие (например, обновление)
+        self.text.bind("<Button-1>", lambda e: self._click())
         self.text.bind("<Button-3>", self._copy)
         self._no_activate()
 
@@ -522,7 +528,20 @@ class AnswerBox:
         self.win.geometry(f"{w}x{h}+{x}+{y}")
         self.text.see("end")
 
+    def _click(self):
+        fn, self.action = self.action, None
+        if fn:
+            fn()
+        else:
+            self.hide()
+
+    def offer(self, text, fn):
+        """Показать сообщение, клик по которому выполняет fn."""
+        self.error(text)
+        self.action = fn
+
     def show_status(self, status, header=""):
+        self.action = None
         self.raw = ""
         self.header = header
         self._set(status, dim=True)
@@ -536,6 +555,7 @@ class AnswerBox:
         self._place()
 
     def error(self, msg):
+        self.action = None
         self.raw = msg
         self.header = ""
         self._set(msg)
@@ -734,6 +754,74 @@ class VoiceInput:
 
 
 # --------------------------------------------------------------------------- #
+#  Обновления через GitHub Releases
+# --------------------------------------------------------------------------- #
+
+def _ver(v):
+    nums = re.findall(r"\d+", v or "")
+    return tuple(int(n) for n in nums[:3]) + (0,) * (3 - len(nums[:3]))
+
+
+class Updater:
+    """Проверяет последний релиз на GitHub; если версия новее — скачивает и
+    запускает установщик поверх текущей версии (настройки сохраняются)."""
+
+    API = f"https://api.github.com/repos/{UPDATE_REPO}/releases/latest"
+    ASSET = "ClaudeGhost-Setup.exe"
+
+    def __init__(self, events):
+        self.events = events  # ("update", (version, url)) / ("update_progress", str) / ("update_error", str) / ("update_ready", path)
+
+    def _get(self, url, timeout=15):
+        req = urllib.request.Request(url, headers={"User-Agent": "ClaudeGhost-Updater",
+                                                   "Accept": "application/vnd.github+json"})
+        return urllib.request.urlopen(req, timeout=timeout)
+
+    def check_async(self):
+        def _do():
+            try:
+                with self._get(self.API) as r:
+                    rel = json.load(r)
+                tag = rel.get("tag_name", "")
+                if rel.get("draft") or rel.get("prerelease") or _ver(tag) <= _ver(__version__):
+                    return
+                for a in rel.get("assets", []):
+                    if a.get("name") == self.ASSET:
+                        self.events.put(("update", (tag.lstrip("vV"), a["browser_download_url"])))
+                        return
+            except Exception as e:  # нет сети / репозиторий приватный / нет релизов — молча
+                print("update check:", e, file=sys.stderr)
+        threading.Thread(target=_do, daemon=True).start()
+
+    def download_async(self, url):
+        def _do():
+            try:
+                path = os.path.join(tempfile.gettempdir(), self.ASSET)
+                with self._get(url, timeout=60) as r, open(path, "wb") as f:
+                    total = int(r.headers.get("Content-Length") or 0)
+                    done, last = 0, 0
+                    while True:
+                        chunk = r.read(1 << 16)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        done += len(chunk)
+                        if total and done * 100 // total >= last + 5:
+                            last = done * 100 // total
+                            self.events.put(("update_progress", f"Скачиваю обновление… {last}%"))
+                self.events.put(("update_ready", path))
+            except Exception as e:
+                self.events.put(("update_error", f"Не удалось скачать обновление: {e}"))
+        threading.Thread(target=_do, daemon=True).start()
+
+    @staticmethod
+    def install(path):
+        """Тихая установка поверх текущей версии; установщик сам запустит новую версию."""
+        subprocess.Popen([path, "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS"],
+                         close_fds=True)
+
+
+# --------------------------------------------------------------------------- #
 #  Оверлей выбора модели и effort
 # --------------------------------------------------------------------------- #
 
@@ -912,6 +1000,16 @@ class App:
             self.box.error("Claude Ghost: Claude CLI не установлен.\n"
                            "Нажмите Ctrl+Shift+M → «Установить CLI и войти».")
         self.account.check_async()
+        self.updater = Updater(self.claude_events)
+        if FROZEN and self.cfg.get("check_updates", True):
+            self.root.after(8000, self.updater.check_async)  # не мешаем старту
+
+    def _offer_update(self, version, url):
+        def install():
+            self.box.show_status("Скачиваю обновление…")
+            self.updater.download_async(url)
+        self.box.offer(f"Доступна новая версия Claude Ghost {version} (у вас {__version__}).\n\n"
+                       "Кликните сюда, чтобы обновить. Ctrl+Shift+H — позже.", install)
         self.root.after(30, self._poll)
 
     def _poll(self):
@@ -950,6 +1048,17 @@ class App:
                 kind, data = self.claude_events.get_nowait()
                 if kind == "delta":
                     self.box.append(data)
+                elif kind == "update":
+                    self._offer_update(*data)
+                elif kind == "update_progress":
+                    self.box.show_status(data)
+                elif kind == "update_error":
+                    self.box.error(data)
+                elif kind == "update_ready":
+                    self.box.show_status("Устанавливаю обновление, программа перезапустится…")
+                    Updater.install(data)
+                    self.root.after(1500, self.quit)
+                    return
                 elif kind == "header":
                     self.box.show_status("…", header=data)
                 elif kind == "done":

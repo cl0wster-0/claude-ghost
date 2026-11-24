@@ -14,9 +14,9 @@ jobs:
   windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -27,9 +27,10 @@ jobs:
 
       - name: Build exe and installer
         shell: pwsh
-        run: ./build.ps1
+        run: |
+          if ("${{ github.ref_type }}" -eq "tag") { ./build.ps1 -Version "${{ github.ref_name }}" } else { ./build.ps1 }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: ClaudeGhost-Setup
           path: dist/ClaudeGhost-Setup.exe

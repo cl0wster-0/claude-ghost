@@ -8,6 +8,7 @@
 AppId={{6F1E2C5A-9C3B-4D7E-8B21-C1A0D6E9F4B2}
 AppName={#AppName}
 AppVersion={#AppVersion}
+VersionInfoVersion={#AppVersion}
 AppPublisher=cl0wster
 DefaultDirName={localappdata}\Programs\Claude Ghost
 DefaultGroupName={#AppName}
@@ -41,6 +42,8 @@ Name: "{userstartup}\{#AppName}"; Filename: "{app}\ClaudeGhost.exe"; Tasks: auto
 
 [Run]
 Filename: "{app}\ClaudeGhost.exe"; Description: "Запустить Claude Ghost"; Flags: nowait postinstall skipifsilent
+; при тихой установке (автообновление) — сразу запустить новую версию
+Filename: "{app}\ClaudeGhost.exe"; Flags: nowait; Check: WizardSilent
 
 [UninstallRun]
 Filename: "taskkill"; Parameters: "/F /IM ClaudeGhost.exe"; Flags: runhidden; RunOnceId: "KillGhost"
