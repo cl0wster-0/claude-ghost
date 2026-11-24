@@ -29,7 +29,7 @@ import mss
 from PIL import Image, ImageEnhance, ImageTk
 
 APP_NAME = "Claude Ghost"
-__version__ = "1.0.0"  # при сборке из тега vX.Y.Z заменяется на X.Y.Z (build.ps1)
+__version__ = "1.1.0"  # при сборке из тега vX.Y.Z заменяется на X.Y.Z (build.ps1)
 UPDATE_REPO = "cl0wster-0/claude-ghost"
 FROZEN = getattr(sys, "frozen", False)  # True, если запущен собранный .exe
 APP_DIR = os.path.dirname(sys.executable if FROZEN else os.path.abspath(__file__))
@@ -409,6 +409,7 @@ class ClaudeRunner:
             pass  # процесс мог упасть — разберёмся по stderr ниже
 
         got_text = False
+        got_error = False
         try:
             for line in p.stdout:
                 if rid != self.run_id:
@@ -426,6 +427,8 @@ class ClaudeRunner:
                     if ev.get("type") == "content_block_delta" and ev.get("delta", {}).get("type") == "text_delta":
                         got_text = True
                         self.events.put(("delta", ev["delta"]["text"]))
+                elif t == "assistant" and o.get("message", {}).get("model") == "<synthetic>":
+                    continue  # служебное сообщение CLI об ошибке — придёт в result
                 elif t == "assistant" and not got_text:
                     # CLI без стриминга частичных сообщений — берём целиком
                     for c in o.get("message", {}).get("content", []):
@@ -434,14 +437,22 @@ class ClaudeRunner:
                             self.events.put(("delta", c["text"]))
                 elif t == "result":
                     if o.get("is_error") and not got_text:
-                        self.events.put(("error", str(o.get("result") or "Ошибка Claude")))
+                        msg = str(o.get("result") or "Ошибка Claude")
+                        if "selected model" in msg or "model" in msg.lower() and "not exist" in msg.lower():
+                            self.events.put(("model_rejected", key[0]))
+                            msg = (f"Твой Claude CLI не принял модель {model_label(key[0])}. "
+                                   "Выбери другую версию: Ctrl+Shift+M.\n\n" + msg)
+                        self.events.put(("error", msg))
+                        got_error = True
                     break
         finally:
             if rid == self.run_id:
                 if p.poll() is None:
                     # ответ уже получен — служебный хвост не ждём
                     threading.Timer(5, lambda: p.poll() is None and p.kill()).start()
-                if not got_text:
+                if got_error:
+                    pass
+                elif not got_text:
                     err = ""
                     try:
                         p.wait(timeout=5)
@@ -825,7 +836,26 @@ class Updater:
 #  Оверлей выбора модели и effort
 # --------------------------------------------------------------------------- #
 
-MODELS = [("auto", "Auto"), ("haiku", "Haiku"), ("sonnet", "Sonnet"), ("opus", "Opus")]
+MODELS = [("auto", "Auto"), ("haiku", "Haiku"), ("sonnet", "Sonnet"), ("opus", "Opus"), ("fable", "Fable")]
+# Версии внутри семейства. "latest" — алиас CLI (самая новая версия).
+# Версию, которую CLI отклонит, программа запомнит и пометит ✕.
+VERSIONS = {
+    "opus": [("latest", "новейшая"), ("claude-opus-5-5", "5.5"), ("claude-opus-5", "5"),
+             ("claude-opus-4-8", "4.8"), ("claude-opus-4-7", "4.7"), ("claude-opus-4-6", "4.6"),
+             ("claude-opus-4-5", "4.5")],
+    "sonnet": [("latest", "новейшая"), ("claude-sonnet-5-5", "5.5"), ("claude-sonnet-5", "5"),
+               ("claude-sonnet-4-6", "4.6"), ("claude-sonnet-4-5", "4.5")],
+    "haiku": [("latest", "новейшая"), ("claude-haiku-5-5", "5.5"), ("claude-haiku-4-5", "4.5")],
+    "fable": [("latest", "новейшая"), ("claude-fable-5-2", "5.2"), ("claude-fable-5", "5")],
+}
+
+
+def model_label(model):
+    """'claude-opus-4-7' -> 'Opus 4.7', 'sonnet' -> 'Sonnet'."""
+    m = re.match(r"claude-([a-z]+)-(\d+)(?:-(\d))?(?:-\d{8})?$", model)
+    if m:
+        return f"{m.group(1).capitalize()} {m.group(2)}" + (f".{m.group(3)}" if m.group(3) else "")
+    return model.capitalize()
 EFFORTS = [("auto", "Auto"), ("low", "low"), ("medium", "medium"), ("high", "high"),
            ("xhigh", "xhigh"), ("max", "max")]
 
@@ -874,6 +904,11 @@ class SettingsOverlay:
                 b.pack(side="left", padx=(0, 4))
                 b.bind("<Button-1>", lambda e, f=field, v=value: self._set(f, v))
                 self.buttons[field][value] = b
+        self.font, self.small = font, small
+        self.ver_title = tk.Label(frame, text="Версия", bg=bg, fg="#8a8a8a", font=small)
+        self.ver_line = tk.Frame(frame, bg=bg)
+        self.ver_family = None
+        self.ver_buttons = {}
         self.hint = tk.Label(frame, text="", bg=bg, fg="#8a8a8a", font=small, justify="left")
         self.hint.grid(row=4, column=0, sticky="w", pady=(8, 0))
         # --- аккаунт Claude ---
@@ -897,6 +932,8 @@ class SettingsOverlay:
         self.win.bind("<Right>", lambda e: self._step("model", MODELS, 1))
         self.win.bind("<Up>", lambda e: self._step("effort", EFFORTS, -1))
         self.win.bind("<Down>", lambda e: self._step("effort", EFFORTS, 1))
+        self.win.bind("<Tab>", lambda e: (self._step_version(1), "break")[1])
+        self.win.bind("<Shift-Tab>", lambda e: (self._step_version(-1), "break")[1])
 
         self._reposition()
         self.win.focus_force()
@@ -947,10 +984,59 @@ class SettingsOverlay:
         self.cfg[field] = value
         save_settings({field: value})
         self._refresh()
+        self._reposition()
         self.on_change()
+
+    def _set_version(self, family, value):
+        versions = dict(self.cfg.get("versions") or {})
+        versions[family] = value
+        self.cfg["versions"] = versions
+        bad = [m for m in (self.cfg.get("unavailable_models") or []) if m != value]
+        self.cfg["unavailable_models"] = bad   # выбрал снова — попробуем ещё раз
+        save_settings({"versions": versions, "unavailable_models": bad})
+        self._refresh()
+        self._reposition()
+        self.on_change()
+
+    def _step_version(self, d):
+        fam = self.cfg["model"]
+        if fam not in VERSIONS:
+            return
+        values = [v for v, _ in VERSIONS[fam]]
+        cur = (self.cfg.get("versions") or {}).get(fam, "latest")
+        i = values.index(cur) if cur in values else 0
+        self._set_version(fam, values[(i + d) % len(values)])
+
+    def _build_versions(self, fam):
+        """Строка версий для выбранного семейства (пересоздаётся при смене модели)."""
+        for w in self.ver_line.winfo_children():
+            w.destroy()
+        self.ver_buttons = {}
+        self.ver_family = fam
+        if fam not in VERSIONS:
+            self.ver_title.grid_remove()
+            self.ver_line.grid_remove()
+            return
+        self.ver_title.grid(row=2, column=0, sticky="w", pady=(8, 3))
+        self.ver_line.grid(row=3, column=0, sticky="w")
+        for value, label in VERSIONS[fam]:
+            b = tk.Label(self.ver_line, text=label, font=self.font, padx=6, pady=2, cursor="hand2")
+            b.pack(side="left", padx=(0, 3))
+            b.bind("<Button-1>", lambda e, f=fam, v=value: self._set_version(f, v))
+            self.ver_buttons[value] = b
 
     def _refresh(self):
         c = self.cfg
+        if c["model"] != self.ver_family:
+            self._build_versions(c["model"])
+        bad = set(c.get("unavailable_models") or [])
+        cur = (c.get("versions") or {}).get(c["model"], "latest")
+        for value, b in self.ver_buttons.items():
+            on = value == cur
+            label = dict(VERSIONS[c["model"]])[value]
+            b.configure(text=label + (" ✕" if value in bad else ""),
+                        bg="#4a4a4a" if on else c["box_bg"],
+                        fg="#e07070" if value in bad else ("#ffffff" if on else "#b0b0b0"))
         for field, btns in self.buttons.items():
             for value, b in btns.items():
                 on = c[field] == value
@@ -963,7 +1049,9 @@ class SettingsOverlay:
             if c["effort"] != "auto":
                 hint += f"\neffort для обеих: {c['effort']}"
         else:
-            hint = "Effort Auto = по умолчанию для модели"
+            hint = "Effort Auto = по умолчанию для модели. Tab — версия."
+            if cur in bad:
+                hint = "✕ — твой Claude CLI не принял эту версию.\n" + hint
         self.hint.configure(text=hint)
 
 
@@ -1048,6 +1136,17 @@ class App:
                 kind, data = self.claude_events.get_nowait()
                 if kind == "delta":
                     self.box.append(data)
+                elif kind == "model_rejected":
+                    bad = list(self.cfg.get("unavailable_models") or [])
+                    if data not in bad:
+                        bad.append(data)
+                        self.cfg["unavailable_models"] = bad
+                        save_settings({"unavailable_models": bad})
+                    with self.runner.lock:  # прогретый процесс с этой моделью бесполезен
+                        for k in [k for k in self.runner.warm if k[0] == data]:
+                            p = self.runner.warm.pop(k)
+                            if p.poll() is None:
+                                p.kill()
                 elif kind == "update":
                     self._offer_update(*data)
                 elif kind == "update_progress":
@@ -1081,8 +1180,13 @@ class App:
         if c["model"] == "auto":
             keys = [self._key(c["auto_fast"]), self._key(c["auto_strong"])]
         else:
-            keys = [(c["model"], c["effort"])]
+            keys = [(self._resolve(c["model"]), c["effort"])]
         return list(dict.fromkeys(keys))
+
+    def _resolve(self, family):
+        """Семейство -> конкретная версия из настроек ('latest' = алиас CLI)."""
+        v = (self.cfg.get("versions") or {}).get(family, "latest")
+        return family if v in ("latest", "", None) else v
 
     def _key(self, pair):
         """Пара из Auto-режима; effort из настроек важнее, если он не auto."""
@@ -1095,7 +1199,7 @@ class App:
         """Выбор (модель, effort). В режиме Auto — по сложности вопроса."""
         c = self.cfg
         if c["model"] != "auto":
-            return (c["model"], c["effort"])
+            return (self._resolve(c["model"]), c["effort"])
         hard = False
         if image_area and image_area > c["auto_image_area"]:
             hard = True
@@ -1108,7 +1212,7 @@ class App:
     @staticmethod
     def _tag(key):
         model, effort = key
-        return model.capitalize() + ("" if effort == "auto" else f" · {effort}")
+        return model_label(model) + ("" if effort == "auto" else f" · {effort}")
 
     def _toggle_voice(self):
         if not self.voice.recording:
