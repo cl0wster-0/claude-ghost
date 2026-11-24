@@ -17,7 +17,7 @@ PrivilegesRequired=lowest
 OutputDir=..\dist
 OutputBaseFilename=ClaudeGhost-Setup
 SetupIconFile=..\assets\icon.ico
-UninstallDisplayIcon={app}\CG.exe
+UninstallDisplayIcon={app}\icon.ico
 Compression=lzma2/ultra
 SolidCompression=yes
 WizardStyle=modern
@@ -34,15 +34,17 @@ Name: "autostart"; Description: "Запускать при входе в Windows
 
 [Files]
 Source: "..\dist\CG\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; CG.exe собран без иконки (в диспетчере задач — обычный значок), а ярлыки берут логотип отсюда
+Source: "..\assets\icon.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [InstallDelete]
 ; до 1.1.2 exe назывался ClaudeGhost.exe
 Type: files; Name: "{app}\ClaudeGhost.exe"
 
 [Icons]
-Name: "{autoprograms}\{#AppName}"; Filename: "{app}\CG.exe"
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\CG.exe"; Tasks: desktopicon
-Name: "{userstartup}\{#AppName}"; Filename: "{app}\CG.exe"; Tasks: autostart
+Name: "{autoprograms}\{#AppName}"; Filename: "{app}\CG.exe"; IconFilename: "{app}\icon.ico"
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\CG.exe"; IconFilename: "{app}\icon.ico"; Tasks: desktopicon
+Name: "{userstartup}\{#AppName}"; Filename: "{app}\CG.exe"; IconFilename: "{app}\icon.ico"; Tasks: autostart
 
 [Run]
 Filename: "{app}\CG.exe"; Description: "Запустить Claude Ghost"; Flags: nowait postinstall skipifsilent
