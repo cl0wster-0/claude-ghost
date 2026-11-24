@@ -3,9 +3,11 @@ name: Build
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
   workflow_dispatch:
+  # Публикация релиза на GitHub (тег vX.Y.Z) -> сборка этой версии и установщик в релиз
+  release:
+    types: [published]
 
 permissions:
   contents: write
@@ -28,15 +30,16 @@ jobs:
       - name: Build exe and installer
         shell: pwsh
         run: |
-          if ("${{ github.ref_type }}" -eq "tag") { ./build.ps1 -Version "${{ github.ref_name }}" } else { ./build.ps1 }
+          if ("${{ github.event_name }}" -eq "release") { ./build.ps1 -Version "${{ github.event.release.tag_name }}" } else { ./build.ps1 }
 
       - uses: actions/upload-artifact@v5
         with:
           name: ClaudeGhost-Setup
           path: dist/ClaudeGhost-Setup.exe
 
-      - name: Release (on tag)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Attach installer to the release (plain .exe, not zipped)
+        if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event.release.tag_name }}
           files: dist/ClaudeGhost-Setup.exe
