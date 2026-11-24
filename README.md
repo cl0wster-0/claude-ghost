@@ -76,6 +76,9 @@ Claude Ghost работает через **Claude Code CLI** и твою под�
    - запуск при входе в Windows.
 3. В конце установщик предложит сразу запустить Claude Ghost.
 
+Программа ставится в `%LOCALAPPDATA%\Programs\Claude Ghost`, её файл называется `CG.exe`.
+В диспетчере задач она видна как `CG.exe` с описанием «Claude Ghost».
+
 При первом запуске программа один раз скачивает модель распознавания речи (~150 МБ),
 поэтому первый голосовой вопрос может занять дольше. Скриншоты работают сразу.
 
@@ -333,8 +336,8 @@ Claude Ghost работает через **Claude Code CLI** и твою под�
 powershell -ExecutionPolicy Bypass -File build.ps1
 ```
 
-Результат: `dist\ClaudeGhost\ClaudeGhost.exe` и установщик `dist\ClaudeGhost-Setup.exe`.
-`build.ps1` также запускает `ClaudeGhost.exe --selftest`, чтобы проверить, что все зависимости попали в сборку.
+Результат: `dist\CG\CG.exe` и установщик `dist\ClaudeGhost-Setup.exe`.
+`build.ps1` также запускает `CG.exe --selftest`, чтобы проверить, что все зависимости попали в сборку.
 
 ### Структура проекта
 
@@ -353,7 +356,7 @@ powershell -ExecutionPolicy Bypass -File build.ps1
 
 Код проекта распространяется по лицензии [MIT](LICENSE).
 
-Собранный `ClaudeGhost.exe` включает сторонние библиотеки со своими лицензиями:
+Собранный `CG.exe` включает сторонние библиотеки со своими лицензиями:
 MIT (keyboard, mss, sounddevice/PortAudio, faster-whisper, CTranslate2, onnxruntime),
 BSD (numpy, PyAV), Apache-2.0 (tokenizers, huggingface_hub), MIT-CMU (Pillow),
 PSF (Python), Tcl/Tk license, а также библиотеки FFmpeg (LGPL-2.1+, через PyAV,

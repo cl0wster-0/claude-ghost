@@ -4,7 +4,7 @@ Claude Ghost — горячая клавиша -> выделяешь облас�
 
 Авторизация: через Claude Code CLI (`claude auth login`), без API-ключа.
 Вход и установку CLI можно сделать из панели Ctrl+Shift+M.
-Платформа: Windows 10/11. Запуск из исходников: Python 3.10+, или собранный ClaudeGhost.exe.
+Платформа: Windows 10/11. Запуск из исходников: Python 3.10+, или собранный CG.exe.
 """
 
 import base64

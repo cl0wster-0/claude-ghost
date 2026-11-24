@@ -17,7 +17,7 @@ PrivilegesRequired=lowest
 OutputDir=..\dist
 OutputBaseFilename=ClaudeGhost-Setup
 SetupIconFile=..\assets\icon.ico
-UninstallDisplayIcon={app}\ClaudeGhost.exe
+UninstallDisplayIcon={app}\CG.exe
 Compression=lzma2/ultra
 SolidCompression=yes
 WizardStyle=modern
@@ -33,17 +33,22 @@ Name: "desktopicon"; Description: "Создать ярлык на рабочем
 Name: "autostart"; Description: "Запускать при входе в Windows"; GroupDescription: "Автозапуск:"
 
 [Files]
-Source: "..\dist\ClaudeGhost\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\dist\CG\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+[InstallDelete]
+; до 1.1.2 exe назывался ClaudeGhost.exe
+Type: files; Name: "{app}\ClaudeGhost.exe"
 
 [Icons]
-Name: "{autoprograms}\{#AppName}"; Filename: "{app}\ClaudeGhost.exe"
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\ClaudeGhost.exe"; Tasks: desktopicon
-Name: "{userstartup}\{#AppName}"; Filename: "{app}\ClaudeGhost.exe"; Tasks: autostart
+Name: "{autoprograms}\{#AppName}"; Filename: "{app}\CG.exe"
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\CG.exe"; Tasks: desktopicon
+Name: "{userstartup}\{#AppName}"; Filename: "{app}\CG.exe"; Tasks: autostart
 
 [Run]
-Filename: "{app}\ClaudeGhost.exe"; Description: "Запустить Claude Ghost"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\CG.exe"; Description: "Запустить Claude Ghost"; Flags: nowait postinstall skipifsilent
 ; при тихой установке (автообновление) — сразу запустить новую версию
-Filename: "{app}\ClaudeGhost.exe"; Flags: nowait; Check: WizardSilent
+Filename: "{app}\CG.exe"; Flags: nowait; Check: WizardSilent
 
 [UninstallRun]
-Filename: "taskkill"; Parameters: "/F /IM ClaudeGhost.exe"; Flags: runhidden; RunOnceId: "KillGhost"
+Filename: "taskkill"; Parameters: "/F /IM CG.exe"; Flags: runhidden; RunOnceId: "KillGhost"
+Filename: "taskkill"; Parameters: "/F /IM ClaudeGhost.exe"; Flags: runhidden; RunOnceId: "KillGhostOld"
