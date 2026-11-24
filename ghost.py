@@ -744,15 +744,16 @@ class VoiceInput:
         return path
 
     def _load_model(self):
-        from faster_whisper import WhisperModel
         for attempt in (1, 2):
             try:
+                from faster_whisper import WhisperModel
                 path = self._model_dir()
                 self.model = WhisperModel(path, device="cpu", compute_type="int8")
                 self.model_error = None
                 break
             except Exception as e:
-                self.model_error = str(e)
+                if attempt == 2:
+                    self.model_error = str(e)
                 print("whisper model:", e, file=sys.stderr)
                 # битая/недокачанная модель — удаляем и качаем заново (один раз)
                 shutil.rmtree(os.path.join(DATA_DIR, "models", self.cfg["whisper_model"]),
